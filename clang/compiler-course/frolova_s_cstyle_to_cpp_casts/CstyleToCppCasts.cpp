@@ -124,4 +124,3 @@ public:
 
 static FrontendPluginRegistry::Add<CastAction>
     X("cstyle_cast_to_cpp_cast", "C-style cast to C++ cast converter");
-```
