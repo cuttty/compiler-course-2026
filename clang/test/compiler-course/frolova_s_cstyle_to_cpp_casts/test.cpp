@@ -1,47 +1,47 @@
 // RUN: split-file %s %t
-// RUN: %clang_cc1 -load %llvmshlibdir/CStyleToCppCasts_Frolova_Sofya_FIIT3_ClangAST%pluginext -plugin cstyle_cast_to_cpp_cast -fsyntax-only %t/with_casts.cpp | FileCheck %t/with_casts.cpp
-// RUN: %clang_cc1 -load %llvmshlibdir/CStyleToCppCasts_Frolova_Sofya_FIIT3_ClangAST%pluginext -plugin cstyle_cast_to_cpp_cast -fsyntax-only %t/without_casts.cpp | FileCheck %t/without_casts.cpp --allow-empty --implicit-check-not="{{(const|static|reinterpret)_cast<}}"
+// RUN: %clang_cc1 -load %llvmshlibdir/CStyleToCppCasts_Frolova_Sofya_FIIT3_ClangAST%pluginext -plugin cstyle_cast_to_cpp_cast -fsyntax-only %t/with_casts.cpp 2>&1 | FileCheck %t/with_casts.cpp
+// RUN: %clang_cc1 -load %llvmshlibdir/CStyleToCppCasts_Frolova_Sofya_FIIT3_ClangAST%pluginext -plugin cstyle_cast_to_cpp_cast -fsyntax-only %t/without_casts.cpp 2>&1 | FileCheck %t/without_casts.cpp --allow-empty --implicit-check-not="{{(const|static|reinterpret)_cast<}}"
 
 //--- with_casts.cpp
-void test_const() {
-    const int x = 42;
-    // CHECK: int* p = const_cast<int*>(&x);
-    int* p = (int*)&x;
+// Проверка базовых преобразований
+void test_primitive_casts() {
+    int a = 5;
+    // CHECK: double b = static_cast<double>(a);
+    double b = (double)a;
+
+    // CHECK: int *p = reinterpret_cast<int *>(a);
+    int *p = (int *)a;
+
+    const int c = 10;
+    // CHECK: int *q = const_cast<int *>(&c);
+    int *q = (int *)&c;
 }
 
-void test_static() {
-    double d = 3.14;
-    // CHECK: int i = static_cast<int>(d);
-    int i = (int)d;
+// Вспомогательные классы для проверки иерархии
+struct Point { int x; int y; };
+struct DataBlock { float values[4]; };
+class Base { public: virtual ~Base() {} };
+class Derived : public Base { public: int id; };
+
+void test_custom_types() {
+    Point pt = {10, 20};
+    // CHECK: DataBlock *data = reinterpret_cast<DataBlock *>(&pt);
+    DataBlock *data = (DataBlock *)&pt;
+
+    Derived derived_obj;
+    // CHECK: Base *base_ptr = static_cast<Base *>(&derived_obj);
+    Base *base_ptr = (Base *)&derived_obj;
+
+    Base *b_ptr = new Derived();
+    // CHECK: Derived *d_ptr = static_cast<Derived *>(b_ptr);
+    Derived *d_ptr = (Derived *)b_ptr;
+
+    const Point const_pt = {0, 0};
+    // CHECK: Point *mut_pt = const_cast<Point *>(&const_pt);
+    Point *mut_pt = (Point *)&const_pt;
 }
 
-void test_reinterpret() {
-    long addr = 0xFF00;
-    // CHECK: int* ptr = reinterpret_cast<int*>(addr);
-    int* ptr = (int*)addr;
-}
-
-void test_reinterpret_ptr() {
-    float f = 1.23f;
-    // CHECK: int* bad = reinterpret_cast<int*>(&f);
-    int* bad = (int*)&f;
-}
-
-void test_const_volatile() {
-    const volatile int cv = 100;
-    // CHECK: int* p = const_cast<int*>(&cv);
-    int* p = (int*)&cv;
-}
-
-struct Base { int a; };
-struct Derived : Base { int b; };
-void test_inheritance() {
-    Derived d;
-    Base* base = &d;
-    // CHECK: Derived* derived = static_cast<Derived*>(base);
-    Derived* derived = (Derived*)base;
-}
-
+// Проверка сложных выражений
 void test_complex() {
     int x = 5, y = 7;
     // CHECK: double res = static_cast<double>(x + y) / 2.0;
@@ -49,6 +49,7 @@ void test_complex() {
 }
 
 //--- without_casts.cpp
+// Файл без C-style кастов – плагин не должен ничего менять
 void no_casts() {
     int a = 10;
     int b = a + 20;
