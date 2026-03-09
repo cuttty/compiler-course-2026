@@ -18,15 +18,6 @@ if(WIN32 OR CYGWIN)
         clangRewrite          
         clangLex               
     )
-else()
-  
-    clang_target_link_libraries(${TARGET_NAME} PRIVATE
-        clangAST
-        clangBasic
-        clangFrontend
-        clangRewrite
-        clangLex
-    )
 endif()
 
 set(CLANG_TEST_DEPS "${TARGET_NAME}" ${CLANG_TEST_DEPS} PARENT_SCOPE)
