@@ -17,17 +17,12 @@ if(WIN32 OR CYGWIN)
         clangLex
     )
 else()
-    # На Linux/macOS отключаем явную линковку с LLVM и разрешаем неопределённые символы
-    # (они будут взяты из основного процесса clang)
+    # На Linux/macOS отключаем явную линковку с LLVM и Clang, 
+    # разрешаем неопределённые символы.
+    # (они будут взяты из основного процесса clang во время загрузки плагина)
     target_link_options(${TARGET_NAME} PRIVATE "LINKER:-undefined,dynamic_lookup")
-    clang_target_link_libraries(${TARGET_NAME} PRIVATE
-        clangAST
-        clangBasic
-        clangFrontend
-        clangRewrite
-        clangLex
-        # Не добавляем LLVMSupport и другие LLVM-библиотеки!
-    )
+    
+    # ВНИМАНИЕ: вызов clang_target_link_libraries здесь удален!
 endif()
 
 set(CLANG_TEST_DEPS "${TARGET_NAME}" ${CLANG_TEST_DEPS} PARENT_SCOPE)

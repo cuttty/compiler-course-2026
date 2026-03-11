@@ -14,113 +14,102 @@ namespace {
 
 enum CppCastKind { CK_Const, CK_Static, CK_Reinterpret };
 
-CppCastKind getCppCastKind(QualType srcType, QualType dstType,
-                           ASTContext &Context) {
-  if (Context.hasSameUnqualifiedType(srcType, dstType)) {
-    if (srcType.isConstQualified() != dstType.isConstQualified() ||
-        srcType.isVolatileQualified() != dstType.isVolatileQualified()) {
-      return CK_Const;
-    }
-  }
+CppCastKind getCppCastKind(QualType srcType, QualType dstType, ASTContext &Context) {
+    // 1. Работа с указателями и ссылками
+    if ((srcType->isPointerType() && dstType->isPointerType()) ||
+        (srcType->isReferenceType() && dstType->isReferenceType())) {
+        
+        QualType srcPointee = srcType->getPointeeType();
+        QualType dstPointee = dstType->getPointeeType();
 
-  if (srcType->isPointerType() && dstType->isIntegerType())
-    return CK_Reinterpret;
-  if (srcType->isIntegerType() && dstType->isPointerType())
-    return CK_Reinterpret;
-  if (srcType->isPointerType() && dstType->isPointerType()) {
-    QualType srcPointee = srcType->getPointeeType();
-    QualType dstPointee = dstType->getPointeeType();
-    if (!Context.hasSameUnqualifiedType(srcPointee, dstPointee) &&
-        !srcPointee->isVoidType() && !dstPointee->isVoidType()) {
-      return CK_Reinterpret;
-    }
-  }
+        // Проверка на const_cast (типы одинаковые, разница в квалификаторах)
+        if (Context.hasSameUnqualifiedType(srcPointee, dstPointee)) {
+            if (srcPointee.getCVRQualifiers() != dstPointee.getCVRQualifiers()) {
+                return CK_Const;
+            }
+        }
 
-  return CK_Static;
+        // Если приведение между неродственными типами (кроме void*) — reinterpret_cast
+        if (!srcPointee->isVoidType() && !dstPointee->isVoidType() &&
+            !Context.hasSameUnqualifiedType(srcPointee, dstPointee)) {
+            // Упрощенная проверка: если нет явного наследования, считаем reinterpret
+            return CK_Reinterpret;
+        }
+    }
+
+    // 2. Приведение указателя к числу и наоборот
+    if ((srcType->isPointerType() && dstType->isIntegerType()) ||
+        (srcType->isIntegerType() && dstType->isPointerType())) {
+        return CK_Reinterpret;
+    }
+
+    // 3. По умолчанию для примитивов и безопасных апкастов
+    return CK_Static;
 }
 
 class CastVisitor final : public RecursiveASTVisitor<CastVisitor> {
 public:
-  CastVisitor(ASTContext *context, Rewriter &rewriter)
-      : m_context(context), m_rewriter(rewriter) {}
+    CastVisitor(ASTContext *context, Rewriter &rewriter)
+        : m_context(context), m_rewriter(rewriter) {}
 
-  bool VisitCStyleCastExpr(CStyleCastExpr *cast) {
-    SourceManager &SM = m_context->getSourceManager();
+    bool VisitCStyleCastExpr(CStyleCastExpr *cast) {
+        SourceManager &SM = m_context->getSourceManager();
 
-    if (!SM.isInMainFile(cast->getBeginLoc()))
-      return true;
+        // Игнорируем код не из основного файла и макросы
+        if (!SM.isInMainFile(cast->getBeginLoc()) || cast->getBeginLoc().isMacroID())
+            return true;
 
-    Expr *subExpr = cast->getSubExpr();
-    QualType srcType = subExpr->getType();
-    QualType dstType = cast->getType();
+        Expr *subExpr = cast->getSubExpr();
+        CppCastKind kind = getCppCastKind(subExpr->getType(), cast->getType(), *m_context);
 
-    CppCastKind kind = getCppCastKind(srcType, dstType, *m_context);
+        LangOptions LO = m_context->getLangOpts();
+        std::string innerText = Lexer::getSourceText(
+            CharSourceRange::getTokenRange(subExpr->getSourceRange()), SM, LO).str();
+        
+        if (innerText.empty()) return true;
 
-    LangOptions LO = m_context->getLangOpts();
-    CharSourceRange subRange =
-        CharSourceRange::getTokenRange(subExpr->getSourceRange());
-    std::string innerText = Lexer::getSourceText(subRange, SM, LO).str();
-    if (innerText.empty())
-      return true;
+        std::string dstTypeStr = cast->getTypeAsWritten().getAsString();
+        std::string replacement;
 
-    std::string dstTypeStr = dstType.getAsString();
+        switch (kind) {
+            case CK_Const:       replacement = "const_cast<" + dstTypeStr + ">(" + innerText + ")"; break;
+            case CK_Reinterpret: replacement = "reinterpret_cast<" + dstTypeStr + ">(" + innerText + ")"; break;
+            default:             replacement = "static_cast<" + dstTypeStr + ">(" + innerText + ")"; break;
+        }
 
-    std::string replacement;
-    switch (kind) {
-    case CK_Const:
-      replacement = "const_cast<" + dstTypeStr + ">(" + innerText + ")";
-      break;
-    case CK_Static:
-      replacement = "static_cast<" + dstTypeStr + ">(" + innerText + ")";
-      break;
-    case CK_Reinterpret:
-      replacement = "reinterpret_cast<" + dstTypeStr + ">(" + innerText + ")";
-      break;
+        m_rewriter.ReplaceText(cast->getSourceRange(), replacement);
+        return true;
     }
 
-    m_rewriter.ReplaceText(cast->getSourceRange(), replacement);
-
-    return true;
-  }
-
 private:
-  ASTContext *m_context;
-  Rewriter &m_rewriter;
+    ASTContext *m_context;
+    Rewriter &m_rewriter;
 };
 
 class CastConsumer final : public ASTConsumer {
 public:
-  CastConsumer(CompilerInstance &ci)
-      : m_rewriter(ci.getSourceManager(), ci.getLangOpts()) {}
+    CastConsumer(CompilerInstance &ci)
+        : m_rewriter(ci.getSourceManager(), ci.getLangOpts()) {}
 
-  void HandleTranslationUnit(ASTContext &context) override {
-    CastVisitor visitor(&context, m_rewriter);
-    visitor.TraverseDecl(context.getTranslationUnitDecl());
-
-    m_rewriter.getEditBuffer(m_rewriter.getSourceMgr().getMainFileID())
-        .write(llvm::outs());
-  }
+    void HandleTranslationUnit(ASTContext &context) override {
+        CastVisitor visitor(&context, m_rewriter);
+        visitor.TraverseDecl(context.getTranslationUnitDecl());
+        m_rewriter.getEditBuffer(m_rewriter.getSourceMgr().getMainFileID()).write(llvm::outs());
+    }
 
 private:
-  Rewriter m_rewriter;
+    Rewriter m_rewriter;
 };
 
 class CastAction final : public PluginASTAction {
 public:
-  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &ci,
-                                                 llvm::StringRef) override {
-    return std::make_unique<CastConsumer>(ci);
-  }
-
-  bool ParseArgs(const CompilerInstance &ci,
-                 const std::vector<std::string> &args) override {
-    return true;
-  }
-
-  ActionType getActionType() override { return AddBeforeMainAction; }
+    std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &ci, llvm::StringRef) override {
+        return std::make_unique<CastConsumer>(ci);
+    }
+    bool ParseArgs(const CompilerInstance &ci, const std::vector<std::string> &args) override { return true; }
+    ActionType getActionType() override { return AddBeforeMainAction; }
 };
 
 } // namespace
 
-static FrontendPluginRegistry::Add<CastAction>
-    X("cstyle_cast_to_cpp_cast", "C-style cast to C++ cast converter");
+static FrontendPluginRegistry::Add<CastAction> X("cstyle_cast_to_cpp_cast", "C-style cast converter");
