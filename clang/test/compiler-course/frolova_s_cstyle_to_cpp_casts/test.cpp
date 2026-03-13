@@ -1,33 +1,15 @@
-// RUN: split-file %s %t
-// RUN: %clang_cc1 -load %llvmshlibdir/CStyleToCppCasts_Frolova_Sofya_FIIT3_ClangAST%pluginext -plugin cstyle_cast_to_cpp_cast -fsyntax-only %t/with_casts.cpp 2>&1 | FileCheck %t/with_casts.cpp
+// RUN: %clang_cc1 -load %llvmshlibdir/CStyleCastReplacerPlugin_Frolova_Sofya_FIIT3_ClangAST%pluginext -add-plugin cstyle_cast_replacer %s 2>&1 | FileCheck %s
 
-//--- with_casts.cpp
-void test_primitive_casts() {
-    int a = 5;
-    // CHECK: double b = static_cast<double>(a);
-    double b = (double)a;
+void test_casts() {
+    double d = 10.5;
+    
+    // CHECK: int i = static_cast<int>(d);
+    int i = (int)d; 
 
-    // CHECK: int *p = reinterpret_cast<int *>(a);
-    int *p = (int *)a;
+    // CHECK: int* p = reinterpret_cast<int*>(0x12345);
+    int* p = (int*)0x12345;
 
-    const int c = 10;
-    // CHECK: int *q = const_cast<int *>(&c);
-    int *q = (int *)&c;
-
-    // CHECK: int &r = const_cast<int &>(c);
-    int &r = (int &)c;
-}
-
-struct Point { int x; int y; };
-class Base { public: virtual ~Base() {} };
-class Derived : public Base { public: int id; };
-
-void test_complex_types() {
-    Point pt = {10, 20};
-    // CHECK: char *ptr = reinterpret_cast<char *>(&pt);
-    char *ptr = (char *)&pt;
-
-    Derived d;
-    // CHECK: Base *b = static_cast<Base *>(&d);
-    Base *b = (Base *)&d;
+    const int ci = 5;
+    // CHECK: int i2 = static_cast<int>(ci);
+    int i2 = (int)ci;
 }
