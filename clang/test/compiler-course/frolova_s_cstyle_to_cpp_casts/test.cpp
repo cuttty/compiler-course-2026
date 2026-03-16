@@ -5,16 +5,16 @@
 // CHECK: int i2 = static_cast<int>(ci);
 // CHECK: int* pi = const_cast<int *>(pci);
 // CHECK: const int* pci2 = const_cast<const int *>(pi2);
-// CHECK: int& ri = const_cast<int&>(rci);
-// CHECK: const int& rci2 = const_cast<const int&>(ri2);
+// CHECK: int& ri = const_cast<int &>(rci);
+// CHECK: const int& rci2 = const_cast<const int &>(ri2);
 // CHECK: int i = static_cast<int>(vi);
 // CHECK: int* pi = const_cast<int *>(pvi);
 // CHECK: int* pi2 = const_cast<int *>(pcvi);
 // CHECK: char* pc = reinterpret_cast<char *>(&i);
 // CHECK: unsigned long addr = reinterpret_cast<unsigned long>(pc);
-// CHECK: int* pi = reinterpret_cast<int*>(addr);
-// CHECK: char& rc = reinterpret_cast<char&>(i);
-// CHECK: int& ir = reinterpret_cast<int&>(rc);
+// CHECK: int* pi = reinterpret_cast<int *>(addr);
+// CHECK: char& rc = reinterpret_cast<char &>(i);
+// CHECK: int& ir = reinterpret_cast<int &>(rc);
 
 //--- test_casts.cpp
 void test_casts() {
