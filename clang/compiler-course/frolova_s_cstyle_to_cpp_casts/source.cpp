@@ -3,6 +3,7 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Rewrite/Core/Rewriter.h"
+#include "clang/Lex/Lexer.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace {
@@ -16,42 +17,59 @@ public:
   bool VisitCStyleCastExpr(clang::CStyleCastExpr *Node) {
     clang::SourceManager &SM = Context.getSourceManager();
 
-    // Игнорируем макросы и системные заголовки
     if (!SM.isInMainFile(Node->getBeginLoc()) ||
         Node->getBeginLoc().isMacroID())
       return true;
 
-    // Определяем подходящий C++ cast
     std::string CastName = "static_cast";
     clang::CastKind Kind = Node->getCastKind();
 
     if (Kind == clang::CK_BitCast || Kind == clang::CK_LValueBitCast) {
       CastName = "reinterpret_cast";
-    } else if (Kind == clang::CK_NoOp &&
-               Node->getSubExpr()->getType().isConstQualified() &&
-               !Node->getType().isConstQualified()) {
-      CastName = "const_cast";
+    } else if (Kind == clang::CK_NoOp) {
+      // Улучшенная проверка для const_cast
+      clang::QualType SubType = Node->getSubExpr()->getType();
+      clang::QualType TargetType = Node->getType();
+
+      auto isConstCastCompatible = [&](clang::QualType From, clang::QualType To) -> bool {
+        // Удаляем ссылочность
+        if (From->isReferenceType())
+          From = From.getNonReferenceType();
+        if (To->isReferenceType())
+          To = To.getNonReferenceType();
+
+        // Для указателей сравниваем типы, на которые они указывают
+        if (From->isPointerType() && To->isPointerType()) {
+          clang::QualType FromPointee = From->getPointeeType();
+          clang::QualType ToPointee = To->getPointeeType();
+          return Context.hasSameUnqualifiedType(FromPointee, ToPointee) &&
+                 (FromPointee.getCVRQualifiers() != ToPointee.getCVRQualifiers());
+        }
+
+        // Для обычных типов
+        return Context.hasSameUnqualifiedType(From, To) &&
+               (From.getCVRQualifiers() != To.getCVRQualifiers());
+      };
+
+      if (isConstCastCompatible(SubType, TargetType)) {
+        CastName = "const_cast";
+      }
     }
 
-    // 1. Получаем текстовое представление целевого типа
     std::string TypeStr = Node->getTypeAsWritten().getAsString();
 
-    // 2. Получаем текст выражения, которое кастим
     clang::SourceLocation SubExprLoc =
         Node->getSubExprAsWritten()->getBeginLoc();
 
-    // 3. Формируем новую строку: cast_name<type>(expression)
-    std::string Replacement = CastName + "<" + TypeStr + ">(";
-
-    // Заменяем открывающую скобку и тип C-style каста
-    // Находим диапазон от начала каста до начала подвыражения
     clang::SourceRange CastRange(Node->getBeginLoc(),
                                  SubExprLoc.getLocWithOffset(-1));
-
+    std::string Replacement = CastName + "<" + TypeStr + ">(";
     Rewrite.ReplaceText(CastRange, Replacement);
 
-    // Добавляем закрывающую скобку в конце выражения
-    Rewrite.InsertTextAfter(Node->getEndLoc().getLocWithOffset(1), ")");
+    // Корректная вставка закрывающей скобки
+    clang::SourceLocation EndAfterSubExpr = clang::Lexer::getLocForEndOfToken(
+        Node->getSubExpr()->getEndLoc(), 0, Context.getSourceManager(), Context.getLangOpts());
+    Rewrite.InsertTextAfter(EndAfterSubExpr, ")");
 
     return true;
   }
@@ -71,7 +89,6 @@ public:
     CastRewriterVisitor Visitor(Context, Rewrite);
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
 
-    // Выводим измененный код в stdout или перезаписываем файлы
     Rewrite.getEditBuffer(CI.getSourceManager().getMainFileID())
         .write(llvm::outs());
   }
