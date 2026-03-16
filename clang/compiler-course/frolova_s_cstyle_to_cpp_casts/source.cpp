@@ -17,22 +17,32 @@ public:
   bool VisitCStyleCastExpr(clang::CStyleCastExpr *Node) {
     clang::SourceManager &SM = Context.getSourceManager();
 
+    // Работаем только с кодом из основного файла (не из заголовков)
+    // и пропускаем макросы
     if (!SM.isInMainFile(Node->getBeginLoc()) ||
         Node->getBeginLoc().isMacroID())
       return true;
 
+    // Определяем, какой C++ cast нужно использовать
     std::string CastName = "static_cast";
     clang::CastKind Kind = Node->getCastKind();
 
-    if (Kind == clang::CK_BitCast || Kind == clang::CK_LValueBitCast) {
+    // Все варианты, требующие reinterpret_cast
+    if (Kind == clang::CK_BitCast ||
+        Kind == clang::CK_LValueBitCast ||
+        Kind == clang::CK_PointerToIntegral ||   // указатель → целое (ваш случай)
+        Kind == clang::CK_IntegralToPointer ||   // целое → указатель
+        Kind == clang::CK_ReinterpretMemberPointer) {
       CastName = "reinterpret_cast";
-    } else if (Kind == clang::CK_NoOp) {
-      // Улучшенная проверка для const_cast
+    }
+    else if (Kind == clang::CK_NoOp) {
+      // Проверяем, не является ли приведение const_cast-ом
       clang::QualType SubType = Node->getSubExpr()->getType();
       clang::QualType TargetType = Node->getType();
 
-      auto isConstCastCompatible = [&](clang::QualType From, clang::QualType To) -> bool {
-        // Удаляем ссылочность
+      auto isConstCastCompatible = [&](clang::QualType From,
+                                        clang::QualType To) -> bool {
+        // Убираем ссылки
         if (From->isReferenceType())
           From = From.getNonReferenceType();
         if (To->isReferenceType())
@@ -56,19 +66,22 @@ public:
       }
     }
 
+    // Получаем тип, как он был написан в исходном коде
     std::string TypeStr = Node->getTypeAsWritten().getAsString();
 
+    // Находим позицию подвыражения (то, что внутри скобок)
     clang::SourceLocation SubExprLoc =
         Node->getSubExprAsWritten()->getBeginLoc();
 
+    // Заменяем открывающую часть "(тип)" на "reinterpret_cast<тип>("
     clang::SourceRange CastRange(Node->getBeginLoc(),
                                  SubExprLoc.getLocWithOffset(-1));
     std::string Replacement = CastName + "<" + TypeStr + ">(";
     Rewrite.ReplaceText(CastRange, Replacement);
 
-    // Корректная вставка закрывающей скобки
+    // Вставляем закрывающую скобку после окончания подвыражения
     clang::SourceLocation EndAfterSubExpr = clang::Lexer::getLocForEndOfToken(
-        Node->getSubExpr()->getEndLoc(), 0, Context.getSourceManager(), Context.getLangOpts());
+        Node->getSubExpr()->getEndLoc(), 0, SM, Context.getLangOpts());
     Rewrite.InsertTextAfter(EndAfterSubExpr, ")");
 
     return true;
@@ -89,6 +102,7 @@ public:
     CastRewriterVisitor Visitor(Context, Rewrite);
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
 
+    // Выводим изменённый код в stdout
     Rewrite.getEditBuffer(CI.getSourceManager().getMainFileID())
         .write(llvm::outs());
   }
@@ -112,6 +126,7 @@ public:
 
   ActionType getActionType() override { return AddBeforeMainAction; }
 };
+
 } // namespace
 
 static clang::FrontendPluginRegistry::Add<CastAction>
