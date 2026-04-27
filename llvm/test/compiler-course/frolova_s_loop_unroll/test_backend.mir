@@ -1,0 +1,156 @@
+# RUN: llc -mtriple x86_64-unknown-linux-gnu --load=%llvmshlibdir/frolova_s_loop_unroll_BACKEND%shlibext \
+# RUN: -run-pass=example-x86 %s -o - | FileCheck %s
+
+--- |
+  source_filename = "test_all.ll"
+  target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+
+  ; 1. Без циклов
+  define dso_local noundef zeroext i1 @_Z6isEveni(i32 noundef %0) {
+    %2 = and i32 %0, 1
+    %3 = icmp eq i32 %2, 0
+    ret i1 %3
+  }
+
+  ; 2. Простой цикл
+  define dso_local void @simple_loop() {
+    br label %loop
+  loop:
+    br label %loop
+  }
+
+  ; 3. Вложенные циклы
+  define dso_local void @nested_loops() {
+    br label %outer
+  outer:
+    br label %inner
+  inner:
+    br label %inner
+  }
+
+  ; 4. Проверка лимита (5 итераций)
+  define dso_local void @limit_check() {
+    br label %loop
+  loop:
+    br label %loop
+  }
+
+  ; 5. Сложный цикл 
+  define dso_local void @complex_loop() {
+    br label %loop_header
+  loop_header:
+    br i1 undef, label %loop_if, label %loop_else
+  loop_if:
+    br label %loop_header
+  loop_else:
+    br label %loop_header
+  }
+
+...
+
+# Проверка на функции без циклов
+# CHECK: name: _Z6isEveni
+# CHECK: TEST8ri renamable $dil, 1
+# CHECK-NEXT: renamable $al = SETCCr 4
+# CHECK-NEXT: RET64 $al
+name:            _Z6isEveni
+tracksRegLiveness: true
+body:             |
+  bb.0 (%ir-block.1):
+    liveins: $edi
+    TEST8ri renamable $dil, 1, implicit-def $eflags, implicit killed $edi
+    renamable $al = SETCCr 4, implicit killed $eflags
+    RET64 $al
+
+...
+
+# Проверка разворачивания простого цикла 
+# CHECK: name: simple_loop
+# CHECK: bb.0.loop:
+# CHECK-COUNT-5: ADD32ri8
+# CHECK-NOT: ADD32ri8
+# CHECK: JMP_1 %bb.0
+name:            simple_loop
+tracksRegLiveness: true
+body:             |
+  bb.0.loop:
+    successors: %bb.0
+    %0:gr32 = MOV32r0 implicit-def dead $eflags
+    %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
+    JMP_1 %bb.0
+
+...
+
+# Проверка вложенных циклов (внешний не разворачивается, внутренний - разворачивается)
+# CHECK: name: nested_loops
+# CHECK: bb.1.outer:
+# CHECK: INC32r
+# CHECK-NOT: INC32r
+# CHECK: bb.2.inner:
+# CHECK-COUNT-5: DEC32r
+# CHECK: JMP_1 %bb.2
+name:            nested_loops
+tracksRegLiveness: true
+body:             |
+  bb.0.entry:
+    successors: %bb.1
+    %0:gr32 = MOV32r0 implicit-def dead $eflags
+
+  bb.1.outer:
+    successors: %bb.2
+    %1:gr32 = INC32r %0, implicit-def dead $eflags
+
+  bb.2.inner:
+    successors: %bb.2
+    %2:gr32 = DEC32r %1, implicit-def dead $eflags
+    JMP_1 %bb.2
+
+...
+
+# Проверка лимита
+# CHECK: name: limit_check
+# CHECK: bb.0.loop:
+# CHECK-COUNT-5: SUB32ri8
+# CHECK-SAME: MUL32r
+# CHECK: JMP_1 %bb.0
+name:            limit_check
+tracksRegLiveness: true
+body:             |
+  bb.0.loop:
+    successors: %bb.0
+    %0:gr32 = MOV32r0 implicit-def dead $eflags
+    %1:gr32 = SUB32ri8 %0, 1, implicit-def dead $eflags
+    %2:gr32 = MUL32r %1, implicit-def dead $eflags
+    JMP_1 %bb.0
+
+...
+
+# Проверка, что сложные циклы игнорируются
+# CHECK: name: complex_loop
+# CHECK: bb.1.loop_header:
+# CHECK-NEXT: successors:
+# CHECK-NEXT: %1:gr32 = ADD32ri8
+# CHECK-NEXT: Jcc
+name:            complex_loop
+tracksRegLiveness: true
+body:             |
+  bb.0.entry:
+    successors: %bb.1
+    %0:gr32 = MOV32r0 implicit-def dead $eflags
+
+  bb.1.loop_header:
+    successors: %bb.2, %bb.3
+    %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
+    Jcc %bb.2, 4, implicit killed $eflags
+    JMP_1 %bb.3
+
+  bb.2.loop_if:
+    successors: %bb.1
+    %2:gr32 = INC32r %1, implicit-def dead $eflags
+    JMP_1 %bb.1
+    
+  bb.3.loop_else:
+    successors: %bb.1
+    %3:gr32 = DEC32r %1, implicit-def dead $eflags
+    JMP_1 %bb.1
+...
