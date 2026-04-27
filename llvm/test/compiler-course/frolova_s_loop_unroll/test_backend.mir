@@ -48,6 +48,7 @@
 
 ...
 
+---
 # Проверка на функции без циклов
 # CHECK: name: _Z6isEveni
 # CHECK: TEST8ri renamable $dil, 1
@@ -64,6 +65,7 @@ body:             |
 
 ...
 
+---
 # Проверка разворачивания простого цикла 
 # CHECK: name: simple_loop
 # CHECK: bb.0.loop:
@@ -81,6 +83,7 @@ body:             |
 
 ...
 
+---
 # Проверка вложенных циклов (внешний не разворачивается, внутренний - разворачивается)
 # CHECK: name: nested_loops
 # CHECK: bb.1.outer:
@@ -107,6 +110,7 @@ body:             |
 
 ...
 
+---
 # Проверка лимита
 # CHECK: name: limit_check
 # CHECK: bb.0.loop:
@@ -126,6 +130,7 @@ body:             |
 
 ...
 
+---
 # Проверка, что сложные циклы игнорируются
 # CHECK: name: complex_loop
 # CHECK: bb.1.loop_header:
@@ -154,4 +159,5 @@ body:             |
     successors: %bb.1
     %3:gr32 = DEC32r %1, implicit-def dead $eflags
     JMP_1 %bb.1
+
 ...
