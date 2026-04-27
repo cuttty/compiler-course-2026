@@ -16,7 +16,7 @@ public:
   FrolovaSLoopUnroll() : MachineFunctionPass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
-   AU.addRequired<MachineLoopInfoWrapperPass>();
+    AU.addRequired<MachineLoopInfoWrapperPass>();
     MachineFunctionPass::getAnalysisUsage(AU);
   }
 
@@ -85,8 +85,7 @@ bool FrolovaSLoopUnroll::unrollLoop(MachineLoop *L, MachineFunction &MF,
 bool FrolovaSLoopUnroll::runOnMachineFunction(MachineFunction &MF) {
   llvm::outs() << "Running FrolovaSLoopUnroll on function: " << MF.getName()
                << '\n';
-
-   MachineLoopInfo &MLI = getAnalysis<MachineLoopInfoWrapperPass>().getLoopInfo();
+  MachineLoopInfo &MLI = getAnalysis<MachineLoopInfoWrapperPass>().getLI();
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
 
   bool Changed = false;
