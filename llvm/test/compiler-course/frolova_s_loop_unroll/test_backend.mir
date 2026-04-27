@@ -120,9 +120,9 @@ body:             |
     successors: %bb.0
     %0:gr32 = MOV32r0 implicit-def dead $eflags
     %1:gr32 = SUB32ri8 %0, 1, implicit-def dead $eflags
-    %2:gr32 = MUL32r %1, implicit-def dead $eax, implicit-def dead $edx, implicit $eax, implicit-def dead $eflags
+    $eax = COPY %1:gr32
+    MUL32r %1:gr32, implicit-def dead $eax, implicit-def dead $edx, implicit $eax, implicit-def dead $eflags
     JMP_1 %bb.0
-
 ...
 
 # Проверка, что сложные циклы игнорируются
