@@ -123,6 +123,7 @@ body:             |
     $eax = COPY %1:gr32
     MUL32r %1:gr32, implicit-def dead $eax, implicit-def dead $edx, implicit $eax, implicit-def dead $eflags
     JMP_1 %bb.0
+    
 ...
 
 # Проверка, что сложные циклы игнорируются
