@@ -99,6 +99,6 @@ bool FrolovaSLoopUnroll::runOnMachineFunction(MachineFunction &MF) {
 }
 } // namespace
 
-static RegisterPass<FrolovaSLoopUnroll> X("example-x86", "FrolovaSLoopUnrollPass",
-                                          false, false);
-
+static RegisterPass<FrolovaSLoopUnroll>
+    X("example-x86", "FrolovaSLoopUnrollPass", false, false);
+    
