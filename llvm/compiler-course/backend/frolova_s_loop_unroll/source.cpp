@@ -101,4 +101,3 @@ bool FrolovaSLoopUnroll::runOnMachineFunction(MachineFunction &MF) {
 
 static RegisterPass<FrolovaSLoopUnroll>
     X("example-x86", "FrolovaSLoopUnrollPass", false, false);
-
