@@ -31,14 +31,17 @@
     br label %loop
   }
 
+  define dso_local void @complex_loop() {
+    br label %loop_header
+  loop_header:
+    br i1 undef, label %loop_if, label %loop_else
+  loop_if:
+    br label %loop_header
+  loop_else:
+    br label %loop_header
+  }
 ...
-
 ---
-# Проверка на функции без циклов
-# CHECK: name: _Z6isEveni
-# CHECK: TEST8ri renamable $dil, 1
-# CHECK-NEXT: renamable $al = SETCCr 4
-# CHECK-NEXT: RET64 $al
 name:            _Z6isEveni
 tracksRegLiveness: true
 body:             |
@@ -47,16 +50,12 @@ body:             |
     TEST8ri renamable $dil, 1, implicit-def $eflags, implicit killed $edi
     renamable $al = SETCCr 4, implicit killed $eflags
     RET64 $al
-
+# CHECK: name: _Z6isEveni
+# CHECK: TEST8ri renamable $dil, 1
+# CHECK-NEXT: renamable $al = SETCCr 4
+# CHECK-NEXT: RET64 $al
 ...
-
 ---
-# Проверка разворачивания простого цикла
-# CHECK: name: simple_loop
-# CHECK: bb.0.loop:
-# CHECK-COUNT-5: ADD32ri8
-# CHECK-NOT: ADD32ri8
-# CHECK: JMP_1 %bb.0.loop
 name:            simple_loop
 tracksRegLiveness: true
 body:             |
@@ -65,18 +64,13 @@ body:             |
     %0:gr32 = MOV32r0 implicit-def dead $eflags
     %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
     JMP_1 %bb.0.loop
-
+# CHECK: name: simple_loop
+# CHECK: bb.0{{.*}}:
+# CHECK-COUNT-5: ADD32ri8
+# CHECK-NOT: ADD32ri8
+# CHECK: JMP_1 %bb.0
 ...
-
 ---
-# Проверка вложенных циклов (внешний не разворачивается, внутренний - разворачивается)
-# CHECK: name: nested_loops
-# CHECK: bb.1.outer:
-# CHECK: INC32r
-# CHECK-NOT: INC32r
-# CHECK: bb.2.inner:
-# CHECK-COUNT-5: DEC32r
-# CHECK: JMP_1 %bb.2
 name:            nested_loops
 tracksRegLiveness: true
 body:             |
@@ -92,16 +86,15 @@ body:             |
     successors: %bb.2
     %2:gr32 = DEC32r %1, implicit-def dead $eflags
     JMP_1 %bb.2
-
+# CHECK: name: nested_loops
+# CHECK: bb.1{{.*}}:
+# CHECK: INC32r
+# CHECK-NOT: INC32r
+# CHECK: bb.2{{.*}}:
+# CHECK-COUNT-5: DEC32r
+# CHECK: JMP_1 %bb.2
 ...
-
 ---
-# Проверка лимита
-# CHECK: name: limit_check
-# CHECK: bb.0.loop:
-# CHECK-COUNT-5: SUB32ri8
-# CHECK-SAME: MUL32r
-# CHECK: JMP_1 %bb.0
 name:            limit_check
 tracksRegLiveness: true
 body:             |
@@ -112,3 +105,38 @@ body:             |
     $eax = COPY %1:gr32
     MUL32r %1:gr32, implicit-def dead $eax, implicit-def dead $edx, implicit $eax, implicit-def dead $eflags
     JMP_1 %bb.0
+# CHECK: name: limit_check
+# CHECK: bb.0{{.*}}:
+# CHECK-COUNT-5: SUB32ri8
+# CHECK-SAME: MUL32r
+# CHECK: JMP_1 %bb.0
+...
+---
+name:            complex_loop
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    successors: %bb.1
+    %0:gr32 = MOV32r0 implicit-def dead $eflags
+
+  bb.1.loop_header:
+    successors: %bb.2, %bb.3
+    %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
+    Jcc %bb.2, 4, implicit killed $eflags
+    JMP_1 %bb.3
+
+  bb.2.loop_if:
+    successors: %bb.1
+    %2:gr32 = INC32r %1, implicit-def dead $eflags
+    JMP_1 %bb.1
+    
+  bb.3.loop_else:
+    successors: %bb.1
+    %3:gr32 = DEC32r %1, implicit-def dead $eflags
+    JMP_1 %bb.1
+# CHECK: name: complex_loop
+# CHECK: bb.1{{.*}}:
+# CHECK-NEXT: successors:
+# CHECK-NEXT: %1:gr32 = ADD32ri8
+# CHECK-NEXT: Jcc
+...
