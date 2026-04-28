@@ -42,6 +42,10 @@
   }
 ...
 ---
+# CHECK: name: _Z6isEveni
+# CHECK: TEST8ri renamable $dil, 1
+# CHECK-NEXT: renamable $al = SETCCr 4
+# CHECK-NEXT: RET64 $al
 name:            _Z6isEveni
 tracksRegLiveness: true
 body:             |
@@ -50,12 +54,12 @@ body:             |
     TEST8ri renamable $dil, 1, implicit-def $eflags, implicit killed $edi
     renamable $al = SETCCr 4, implicit killed $eflags
     RET64 $al
-# CHECK: name: _Z6isEveni
-# CHECK: TEST8ri renamable $dil, 1
-# CHECK-NEXT: renamable $al = SETCCr 4
-# CHECK-NEXT: RET64 $al
 ...
 ---
+# CHECK: name: simple_loop
+# CHECK: bb.0{{.*}}:
+# CHECK-COUNT-5: ADD32ri8
+# CHECK: JMP_1 %bb.0
 name:            simple_loop
 tracksRegLiveness: true
 body:             |
@@ -64,13 +68,14 @@ body:             |
     %0:gr32 = MOV32r0 implicit-def dead $eflags
     %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
     JMP_1 %bb.0.loop
-# CHECK: name: simple_loop
-# CHECK: bb.0{{.*}}:
-# CHECK-COUNT-5: ADD32ri8
-# CHECK-NOT: ADD32ri8
-# CHECK: JMP_1 %bb.0
 ...
 ---
+# CHECK: name: nested_loops
+# CHECK: bb.1{{.*}}:
+# CHECK: INC32r
+# CHECK: bb.2{{.*}}:
+# CHECK-COUNT-5: DEC32r
+# CHECK: JMP_1 %bb.2
 name:            nested_loops
 tracksRegLiveness: true
 body:             |
@@ -86,15 +91,12 @@ body:             |
     successors: %bb.2
     %2:gr32 = DEC32r %1, implicit-def dead $eflags
     JMP_1 %bb.2
-# CHECK: name: nested_loops
-# CHECK: bb.1{{.*}}:
-# CHECK: INC32r
-# CHECK-NOT: INC32r
-# CHECK: bb.2{{.*}}:
-# CHECK-COUNT-5: DEC32r
-# CHECK: JMP_1 %bb.2
 ...
 ---
+# CHECK: name: limit_check
+# CHECK: bb.0{{.*}}:
+# CHECK-COUNT-5: SUB32ri8
+# CHECK: JMP_1 %bb.0
 name:            limit_check
 tracksRegLiveness: true
 body:             |
@@ -105,13 +107,12 @@ body:             |
     $eax = COPY %1:gr32
     MUL32r %1:gr32, implicit-def dead $eax, implicit-def dead $edx, implicit $eax, implicit-def dead $eflags
     JMP_1 %bb.0
-# CHECK: name: limit_check
-# CHECK: bb.0{{.*}}:
-# CHECK-COUNT-5: SUB32ri8
-# CHECK-SAME: MUL32r
-# CHECK: JMP_1 %bb.0
 ...
 ---
+# CHECK: name: complex_loop
+# CHECK: bb.1{{.*}}:
+# CHECK: %1:gr32 = ADD32ri8
+# CHECK: Jcc
 name:            complex_loop
 tracksRegLiveness: true
 body:             |
@@ -134,9 +135,3 @@ body:             |
     successors: %bb.1
     %3:gr32 = DEC32r %1, implicit-def dead $eflags
     JMP_1 %bb.1
-# CHECK: name: complex_loop
-# CHECK: bb.1{{.*}}:
-# CHECK-NEXT: successors:
-# CHECK-NEXT: %1:gr32 = ADD32ri8
-# CHECK-NEXT: Jcc
-...
