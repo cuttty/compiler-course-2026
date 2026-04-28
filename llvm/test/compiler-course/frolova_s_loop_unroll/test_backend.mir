@@ -41,7 +41,9 @@
     br label %loop_header
   }
 ...
+
 ---
+# Проверка на функции без циклов
 # CHECK: name: _Z6isEveni
 # CHECK: TEST8ri renamable $dil, 1
 # CHECK-NEXT: renamable $al = SETCCr 4
@@ -54,8 +56,11 @@ body:             |
     TEST8ri renamable $dil, 1, implicit-def $eflags, implicit killed $edi
     renamable $al = SETCCr 4, implicit killed $eflags
     RET64 $al
+
 ...
+
 ---
+# Проверка разворачивания простого цикла 
 # CHECK: name: simple_loop
 # CHECK: bb.0.loop:
 # CHECK-COUNT-5: ADD32ri8
@@ -69,8 +74,11 @@ body:             |
     %0:gr32 = MOV32r0 implicit-def dead $eflags
     %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
     JMP_1 %bb.0.loop
+
 ...
+
 ---
+# Проверка вложенных циклов (внешний не разворачивается, внутренний - разворачивается)
 # CHECK: name: nested_loops
 # CHECK: bb.1.outer:
 # CHECK: INC32r
@@ -93,8 +101,11 @@ body:             |
     successors: %bb.2
     %2:gr32 = DEC32r %1, implicit-def dead $eflags
     JMP_1 %bb.2
+
 ...
+
 ---
+# Проверка лимита
 # CHECK: name: limit_check
 # CHECK: bb.0.loop:
 # CHECK-COUNT-5: SUB32ri8
@@ -110,13 +121,17 @@ body:             |
     $eax = COPY %1:gr32
     MUL32r %1:gr32, implicit-def dead $eax, implicit-def dead $edx, implicit $eax, implicit-def dead $eflags
     JMP_1 %bb.0
+
 ...
+
 ---
+# Проверка, что сложные циклы игнорируются
 # CHECK: name: complex_loop
 # CHECK: bb.1.loop_header:
 # CHECK-NEXT: successors:
 # CHECK-NEXT: %1:gr32 = ADD32ri8
-# CHECK-NEXT: JCC_1 %bb.2, 4
+# CHECK-NEXT: JCC_1
+# CHECK-NEXT: JMP_1
 name:            complex_loop
 tracksRegLiveness: true
 body:             |
@@ -126,8 +141,8 @@ body:             |
 
   bb.1.loop_header:
     successors: %bb.2, %bb.3
-    %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
-    JCC_1 %bb.2, 4, implicit killed $eflags
+    %1:gr32 = ADD32ri8 %0, 1, implicit-def $eflags
+    JCC_1 %bb.2, 4, implicit $eflags
     JMP_1 %bb.3
 
   bb.2.loop_if:
