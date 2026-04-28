@@ -53,10 +53,10 @@ body:             |
 ---
 # Проверка разворачивания простого цикла
 # CHECK: name: simple_loop
-# CHECK: bb.0:
+# CHECK: bb.0.loop:
 # CHECK-COUNT-5: ADD32ri8
 # CHECK-NOT: ADD32ri8
-# CHECK: JMP_1 %bb.0
+# CHECK: JMP_1 %bb.0.loop
 name:            simple_loop
 tracksRegLiveness: true
 body:             |
@@ -98,7 +98,7 @@ body:             |
 ---
 # Проверка лимита
 # CHECK: name: limit_check
-# CHECK: bb.0:
+# CHECK: bb.0.loop:
 # CHECK-COUNT-5: SUB32ri8
 # CHECK-SAME: MUL32r
 # CHECK: JMP_1 %bb.0
