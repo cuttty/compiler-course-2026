@@ -139,4 +139,3 @@ body:             |
     successors: %bb.1
     %3:gr32 = DEC32r %1, implicit-def dead $eflags
     JMP_1 %bb.1
-...
