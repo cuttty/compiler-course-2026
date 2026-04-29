@@ -1,6 +1,7 @@
 #include "X86.h"
 #include "X86InstrInfo.h"
 #include "X86Subtarget.h"
+#include "llvm/CodeGen/MachineDominators.h"  // <-- для MachineDominatorTree
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
@@ -102,9 +103,11 @@ bool FrolovaSLoopUnroll::runOnModule(Module &M) {
     llvm::outs() << "Running FrolovaSLoopUnroll on function: " << MF->getName()
                  << '\n';
 
-    // Строим информацию о циклах для MachineFunction
+    // Строим доминаторное дерево и информацию о циклах
+    MachineDominatorTree MDT;
+    MDT.runOnMachineFunction(*MF);
     MachineLoopInfo MLI;
-    MLI.analyze(*MF);
+    MLI.analyze(MDT);
 
     const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
 
