@@ -98,7 +98,7 @@ bool FrolovaSLoopUnroll::runOnModule(Module &M) {
     MachineDominatorTree MDT;
     MDT.recalculate(*MF);
     MachineLoopInfo MLI;
-    MLI.analyze(MDT.getBase());
+    MLI.analyze(MDT.Base);
 
     const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
     for (MachineLoop *L : MLI) {
