@@ -1,34 +1,26 @@
 #include "X86.h"
 #include "X86InstrInfo.h"
 #include "X86Subtarget.h"
-#include "llvm/CodeGen/MachineDominators.h"
-#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
-#include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Pass.h"
 
 using namespace llvm;
 
 namespace {
-class FrolovaSLoopUnroll : public ModulePass {
+class FrolovaSLoopUnroll : public MachineFunctionPass {
 public:
   static char ID;
-  FrolovaSLoopUnroll() : ModulePass(ID) {}
+  FrolovaSLoopUnroll() : MachineFunctionPass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<MachineModuleInfoWrapperPass>();
-    ModulePass::getAnalysisUsage(AU);
+    AU.addRequired<MachineLoopInfoWrapperPass>();
+    MachineFunctionPass::getAnalysisUsage(AU);
   }
 
-  StringRef getPassName() const override {
-    return "Frolova's Loop Unroll Pass";
-  }
-
-  bool runOnModule(Module &M) override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
   bool processLoop(MachineLoop *L, MachineFunction &MF,
@@ -42,11 +34,16 @@ char FrolovaSLoopUnroll::ID = 0;
 bool FrolovaSLoopUnroll::processLoop(MachineLoop *L, MachineFunction &MF,
                                      const TargetInstrInfo *TII) {
   bool Changed = false;
+
   for (MachineLoop *InnerLoop : *L) {
     Changed |= processLoop(InnerLoop, MF, TII);
   }
+
   unsigned MaxUnrollFactor = 5;
-  Changed |= unrollLoop(L, MF, TII, MaxUnrollFactor);
+  unsigned UnrollCount = MaxUnrollFactor;
+
+  Changed |= unrollLoop(L, MF, TII, UnrollCount);
+
   return Changed;
 }
 
@@ -55,12 +52,14 @@ bool FrolovaSLoopUnroll::unrollLoop(MachineLoop *L, MachineFunction &MF,
                                     unsigned UnrollCount) {
   if (UnrollCount <= 1)
     return false;
+
   MachineBasicBlock *LoopMBB = L->getHeader();
   if (L->getNumBlocks() != 1) {
     llvm::outs() << "Skipping complex loop (multiple blocks) in "
                  << MF.getName() << "\n";
     return false;
   }
+
   llvm::outs() << "Unrolling loop in " << MF.getName()
                << " (Factor: " << UnrollCount << ")\n";
 
@@ -72,42 +71,33 @@ bool FrolovaSLoopUnroll::unrollLoop(MachineLoop *L, MachineFunction &MF,
   }
 
   MachineBasicBlock::iterator InsertPos = LoopMBB->getFirstTerminator();
+
   for (unsigned i = 1; i < UnrollCount; ++i) {
     for (MachineInstr *MI : InstrsToClone) {
       MachineInstr *ClonedMI = MF.CloneMachineInstr(MI);
       LoopMBB->insert(InsertPos, ClonedMI);
     }
   }
+
   return true;
 }
 
-bool FrolovaSLoopUnroll::runOnModule(Module &M) {
-  MachineModuleInfo &MMI = getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
+bool FrolovaSLoopUnroll::runOnMachineFunction(MachineFunction &MF) {
+  llvm::outs() << "Running FrolovaSLoopUnroll on function: " << MF.getName()
+               << '\n';
+  MachineLoopInfo &MLI = getAnalysis<MachineLoopInfoWrapperPass>().getLI();
+  const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+
   bool Changed = false;
 
-  for (Function &F : M) {
-    if (F.isDeclaration())
-      continue;
-    MachineFunction *MF = MMI.getMachineFunction(F);
-    if (!MF)
-      continue;
-
-    llvm::outs() << "Running FrolovaSLoopUnroll on function: " << MF->getName()
-                 << '\n';
-
-    MachineDominatorTree MDT;
-    MDT.recalculate(*MF);
-    MachineLoopInfo MLI;
-    MLI.analyze(MDT.Base);
-
-    const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
-    for (MachineLoop *L : MLI) {
-      Changed |= processLoop(L, *MF, TII);
-    }
+  for (MachineLoop *L : MLI) {
+    Changed |= processLoop(L, MF, TII);
   }
+
   return Changed;
 }
 } // namespace
 
 static RegisterPass<FrolovaSLoopUnroll>
-    X("example-x86", "Frolova's Loop Unroll Pass", false, false);
+    X("example-x86", "FrolovaSLoopUnrollPass", false, false);
+    
