@@ -1,7 +1,7 @@
 #include "X86.h"
 #include "X86InstrInfo.h"
 #include "X86Subtarget.h"
-#include "llvm/CodeGen/MachineDominators.h"  // <-- для MachineDominatorTree
+#include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
@@ -42,15 +42,11 @@ char FrolovaSLoopUnroll::ID = 0;
 bool FrolovaSLoopUnroll::processLoop(MachineLoop *L, MachineFunction &MF,
                                      const TargetInstrInfo *TII) {
   bool Changed = false;
-
   for (MachineLoop *InnerLoop : *L) {
     Changed |= processLoop(InnerLoop, MF, TII);
   }
-
   unsigned MaxUnrollFactor = 5;
-  unsigned UnrollCount = MaxUnrollFactor;
-
-  Changed |= unrollLoop(L, MF, TII, UnrollCount);
+  Changed |= unrollLoop(L, MF, TII, MaxUnrollFactor);
   return Changed;
 }
 
@@ -59,14 +55,12 @@ bool FrolovaSLoopUnroll::unrollLoop(MachineLoop *L, MachineFunction &MF,
                                     unsigned UnrollCount) {
   if (UnrollCount <= 1)
     return false;
-
   MachineBasicBlock *LoopMBB = L->getHeader();
   if (L->getNumBlocks() != 1) {
     llvm::outs() << "Skipping complex loop (multiple blocks) in "
                  << MF.getName() << "\n";
     return false;
   }
-
   llvm::outs() << "Unrolling loop in " << MF.getName()
                << " (Factor: " << UnrollCount << ")\n";
 
@@ -78,14 +72,12 @@ bool FrolovaSLoopUnroll::unrollLoop(MachineLoop *L, MachineFunction &MF,
   }
 
   MachineBasicBlock::iterator InsertPos = LoopMBB->getFirstTerminator();
-
   for (unsigned i = 1; i < UnrollCount; ++i) {
     for (MachineInstr *MI : InstrsToClone) {
       MachineInstr *ClonedMI = MF.CloneMachineInstr(MI);
       LoopMBB->insert(InsertPos, ClonedMI);
     }
   }
-
   return true;
 }
 
@@ -103,23 +95,19 @@ bool FrolovaSLoopUnroll::runOnModule(Module &M) {
     llvm::outs() << "Running FrolovaSLoopUnroll on function: " << MF->getName()
                  << '\n';
 
-    // Строим доминаторное дерево и информацию о циклах
     MachineDominatorTree MDT;
-    MDT.runOnMachineFunction(*MF);
+    MDT.recalculate(*MF);
     MachineLoopInfo MLI;
-    MLI.analyze(MDT);
+    MLI.analyze(MDT.getBase());
 
     const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
-
     for (MachineLoop *L : MLI) {
       Changed |= processLoop(L, *MF, TII);
     }
   }
-
   return Changed;
 }
 } // namespace
 
 static RegisterPass<FrolovaSLoopUnroll>
     X("example-x86", "Frolova's Loop Unroll Pass", false, false);
-    
