@@ -122,7 +122,7 @@ body:             |
 
   bb.1.loop_header:
     successors: %bb.2, %bb.3
-    %1:gr32 = ADD32ri8 %0, 1, implicit-def dead $eflags
+    %1:gr32 = ADD32ri8 %0, 1, implicit-def $eflags
     JCC_1 %bb.2, 4, implicit killed $eflags        
     JMP_1 %bb.3
 
