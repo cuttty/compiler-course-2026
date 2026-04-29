@@ -24,7 +24,7 @@ public:
   }
 
   StringRef getPassName() const override {
-    return "Frolova's Loop Unroll & Branch Canonicalization Pass";
+    return "Frolova's Loop Unroll Pass";
   }
 
   bool runOnModule(Module &M) override;
@@ -34,7 +34,6 @@ private:
                    const TargetInstrInfo *TII);
   bool unrollLoop(MachineLoop *L, MachineFunction &MF,
                   const TargetInstrInfo *TII, unsigned UnrollCount);
-  void canonizeBranches(MachineFunction &MF);
 };
 
 char FrolovaSLoopUnroll::ID = 0;
@@ -89,23 +88,6 @@ bool FrolovaSLoopUnroll::unrollLoop(MachineLoop *L, MachineFunction &MF,
   return true;
 }
 
-void FrolovaSLoopUnroll::canonizeBranches(MachineFunction &MF) {
-  const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
-  for (MachineBasicBlock &MBB : MF) {
-    for (MachineInstr &MI : MBB) {
-      if (MI.getOpcode() == X86::JCC_1) {
-        // операнд условия – третий (индекс 2)
-        unsigned Cond = MI.getOperand(2).getImm();
-        if (Cond == X86::COND_E) {
-          MI.setDesc(TII->get(X86::JE_1));
-          MI.RemoveOperand(2);
-        }
-        // можно добавить другие условия по необходимости
-      }
-    }
-  }
-}
-
 bool FrolovaSLoopUnroll::runOnModule(Module &M) {
   MachineModuleInfo &MMI = getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
   bool Changed = false;
@@ -120,19 +102,15 @@ bool FrolovaSLoopUnroll::runOnModule(Module &M) {
     llvm::outs() << "Running FrolovaSLoopUnroll on function: " << MF->getName()
                  << '\n';
 
-    // Вычисляем информацию о циклах для данной функции
+    // Строим информацию о циклах для MachineFunction
     MachineLoopInfo MLI;
-    MLI.runOnMachineFunction(*MF);
+    MLI.analyze(*MF);
 
     const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
 
-    // Разворачивание циклов
     for (MachineLoop *L : MLI) {
       Changed |= processLoop(L, *MF, TII);
     }
-
-    // Канонизация обобщённых условных переходов
-    canonizeBranches(*MF);
   }
 
   return Changed;
@@ -140,4 +118,5 @@ bool FrolovaSLoopUnroll::runOnModule(Module &M) {
 } // namespace
 
 static RegisterPass<FrolovaSLoopUnroll>
-    X("example-x86", "Frolova's Loop Unroll & Branch Canonicalization", false, false);
+    X("example-x86", "Frolova's Loop Unroll Pass", false, false);
+    
